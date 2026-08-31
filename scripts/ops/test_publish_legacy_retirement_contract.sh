@@ -9,10 +9,14 @@ test_root="$(mktemp -d)"
 trap 'rm -rf "${test_root}"' EXIT
 
 readonly revision="b983a481f915aa9986d1829be2ae689ce856b0d3"
-source_root="${test_root}/legacy-source"
-git clone --quiet --no-checkout "${repository_root}" "${source_root}"
-git -C "${source_root}" checkout --quiet --detach "${revision}"
+source_root="${DEPLOY_LEGACY_TEST_SOURCE_ROOT:-}"
+if [[ -z "${source_root}" ]]; then
+  source_root="${test_root}/legacy-source"
+  git clone --quiet --no-checkout "${repository_root}" "${source_root}"
+  git -C "${source_root}" checkout --quiet --detach "${revision}"
+fi
 source_root="$(realpath "${source_root}")"
+[[ "$(git -C "${source_root}" rev-parse HEAD)" == "${revision}" ]]
 source_deploy_dir="${source_root}/scripts/deploy"
 readonly config_image="ghcr.io/example/quant-core-worker@sha256:$(printf 'a%.0s' {1..64})"
 readonly image_id="sha256:$(printf 'b%.0s' {1..64})"

@@ -94,7 +94,8 @@ jobs:
           [[ "$(sha256sum legacy-source/scripts/deploy/deploy_core.sh | awk '{print $1}')" == "f6ab63f8d360609f0823e773627098f19825f70887d5c4d61b98d8f046f01b4c" ]]
           [[ "$(sha256sum legacy-source/scripts/deploy/runtime-services.txt | awk '{print $1}')" == "bf2a15599e97b464351d31550b52672689c3b8e5983ed7cf04c50d33aedc6c62" ]]
           bash -n scripts/ops/publish_legacy_retirement_contract.sh
-          bash scripts/ops/test_publish_legacy_retirement_contract.sh
+          DEPLOY_LEGACY_TEST_SOURCE_ROOT="${GITHUB_WORKSPACE}/legacy-source" \
+            bash scripts/ops/test_publish_legacy_retirement_contract.sh
 
       - name: Configure SSH agent
         uses: webfactory/ssh-agent@v0.9.0
