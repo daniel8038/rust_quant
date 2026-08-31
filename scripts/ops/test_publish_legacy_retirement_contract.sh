@@ -21,6 +21,16 @@ source_deploy_dir="${source_root}/scripts/deploy"
 readonly config_image="ghcr.io/example/quant-core-worker@sha256:$(printf 'a%.0s' {1..64})"
 readonly image_id="sha256:$(printf 'b%.0s' {1..64})"
 readonly container_id="$(printf 'c%.0s' {1..64})"
+
+file_mode() {
+  local file="$1"
+  if stat -c '%a' "${file}" >/dev/null 2>&1; then
+    stat -c '%a' "${file}"
+  else
+    stat -f '%Lp' "${file}"
+  fi
+}
+
 working_dir="${test_root}/legacy"
 fake_bin="${test_root}/bin"
 mkdir -p "${working_dir}/.deploy/eth-4h-market-handoff" "${working_dir}/scripts" "${fake_bin}"
@@ -92,9 +102,9 @@ runtime_target="${working_dir}/scripts/deploy/runtime-services.txt"
 receipt="${working_dir}/.deploy/eth-4h-market-handoff/retirement-contract-receipt.env"
 cmp "${source_deploy_dir}/deploy_core.sh" "${deploy_target}"
 cmp "${source_deploy_dir}/runtime-services.txt" "${runtime_target}"
-[[ "$(stat -f '%Lp' "${deploy_target}" 2>/dev/null || stat -c '%a' "${deploy_target}")" == "644" ]]
-[[ "$(stat -f '%Lp' "${runtime_target}" 2>/dev/null || stat -c '%a' "${runtime_target}")" == "644" ]]
-[[ "$(stat -f '%Lp' "${receipt}" 2>/dev/null || stat -c '%a' "${receipt}")" == "600" ]]
+[[ "$(file_mode "${deploy_target}")" == "644" ]]
+[[ "$(file_mode "${runtime_target}")" == "644" ]]
+[[ "$(file_mode "${receipt}")" == "600" ]]
 grep -Fxq "legacy_config_image=${config_image}" "${receipt}"
 grep -Fxq "legacy_image_id=${image_id}" "${receipt}"
 grep -Fxq "legacy_image_revision=${revision}" "${receipt}"
@@ -149,7 +159,7 @@ if env "${remote_env[@]}" bash "${contract_script}" __remote publish \
 fi
 [[ "$(cat "${runtime_target}")" == "different bytes" ]]
 
-if rg -n 'docker (stop|start|restart|rm|compose)' "${contract_script}" >/dev/null; then
+if grep -En 'docker (stop|start|restart|rm|compose)' "${contract_script}" >/dev/null; then
   echo "retirement contract helper contains a forbidden Docker mutation" >&2
   exit 1
 fi
