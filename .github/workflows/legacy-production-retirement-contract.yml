@@ -1,0 +1,129 @@
+name: Legacy Production Retirement Contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Publish or verify the immutable legacy retirement contract
+        required: true
+        type: choice
+        options:
+          - publish
+          - verify
+      source_revision:
+        description: Exact legacy Core source revision containing the retirement contract
+        required: true
+        type: string
+      legacy_image_reference:
+        description: Exact quant-core-vegas-eth-4h-worker Config.Image
+        required: true
+        type: string
+      legacy_image_id:
+        description: Exact immutable Docker image ID used by the legacy worker
+        required: true
+        type: string
+      legacy_source_revision:
+        description: Exact source revision label on the legacy worker image
+        required: true
+        type: string
+      confirmation:
+        description: Exact confirmation phrase for the selected action
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-production-retirement-contract
+  cancel-in-progress: false
+
+jobs:
+  retirement-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: production
+    steps:
+      - name: Validate exact retirement contract request
+        shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          LEGACY_IMAGE_REFERENCE: ${{ inputs.legacy_image_reference }}
+          LEGACY_IMAGE_ID: ${{ inputs.legacy_image_id }}
+          LEGACY_SOURCE_REVISION: ${{ inputs.legacy_source_revision }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          readonly contract_revision="b983a481f915aa9986d1829be2ae689ce856b0d3"
+          [[ "${SOURCE_REVISION}" == "${contract_revision}" ]]
+          [[ "${LEGACY_SOURCE_REVISION}" == "${contract_revision}" ]]
+          [[ "${LEGACY_IMAGE_REFERENCE}" =~ ^[A-Za-z0-9._/:@-]+$ ]]
+          [[ "${LEGACY_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          case "${ACTION}" in
+            publish)
+              [[ "${CONFIRMATION}" == "publish-exact-b983-retirement-contract" ]]
+              ;;
+            verify)
+              [[ "${CONFIRMATION}" == "verify-exact-b983-retirement-contract" ]]
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout retirement contract controller
+        uses: actions/checkout@v4
+
+      - name: Checkout exact legacy Core source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_revision }}
+          path: legacy-source
+
+      - name: Verify immutable Git blobs and file hashes
+        shell: bash
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          [[ "$(git -C legacy-source rev-parse HEAD)" == "${SOURCE_REVISION}" ]]
+          [[ "$(git -C legacy-source rev-parse 'HEAD:scripts/deploy/deploy_core.sh')" == "94d0eec915df3c0011f3c975539428e8582b4019" ]]
+          [[ "$(git -C legacy-source rev-parse 'HEAD:scripts/deploy/runtime-services.txt')" == "787062ab3868ab2d08830d9522b3811ac5d1155a" ]]
+          [[ "$(sha256sum legacy-source/scripts/deploy/deploy_core.sh | awk '{print $1}')" == "f6ab63f8d360609f0823e773627098f19825f70887d5c4d61b98d8f046f01b4c" ]]
+          [[ "$(sha256sum legacy-source/scripts/deploy/runtime-services.txt | awk '{print $1}')" == "bf2a15599e97b464351d31550b52672689c3b8e5983ed7cf04c50d33aedc6c62" ]]
+          bash -n scripts/ops/publish_legacy_retirement_contract.sh
+          bash scripts/ops/test_publish_legacy_retirement_contract.sh
+
+      - name: Configure SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Pin production SSH host key
+        shell: bash
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "${SSH_KNOWN_HOSTS}" ]]
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Publish or verify exact legacy retirement contract
+        shell: bash
+        env:
+          DEPLOY_SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_SSH_HOST: ${{ secrets.SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_LEGACY_CONTRACT_ACTION: ${{ inputs.action }}
+          DEPLOY_LEGACY_CONTRACT_CONFIRM: ${{ inputs.confirmation }}
+          DEPLOY_LEGACY_CONTRACT_SOURCE_REVISION: ${{ inputs.source_revision }}
+          DEPLOY_LEGACY_CONFIG_IMAGE: ${{ inputs.legacy_image_reference }}
+          DEPLOY_LEGACY_IMAGE_ID: ${{ inputs.legacy_image_id }}
+          DEPLOY_LEGACY_IMAGE_REVISION: ${{ inputs.legacy_source_revision }}
+          DEPLOY_LEGACY_SOURCE_ROOT: ${{ github.workspace }}/legacy-source
+        run: ./scripts/ops/publish_legacy_retirement_contract.sh
