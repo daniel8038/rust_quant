@@ -5,11 +5,15 @@ script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 repository_root="$(CDPATH= cd -- "${script_dir}/../.." && pwd)"
 contract_script="${script_dir}/publish_legacy_retirement_contract.sh"
 workflow="${repository_root}/.github/workflows/legacy-production-retirement-contract.yml"
-source_deploy_dir="${repository_root}/scripts/deploy"
 test_root="$(mktemp -d)"
 trap 'rm -rf "${test_root}"' EXIT
 
 readonly revision="b983a481f915aa9986d1829be2ae689ce856b0d3"
+source_root="${test_root}/legacy-source"
+git clone --quiet --no-checkout "${repository_root}" "${source_root}"
+git -C "${source_root}" checkout --quiet --detach "${revision}"
+source_root="$(realpath "${source_root}")"
+source_deploy_dir="${source_root}/scripts/deploy"
 readonly config_image="ghcr.io/example/quant-core-worker@sha256:$(printf 'a%.0s' {1..64})"
 readonly image_id="sha256:$(printf 'b%.0s' {1..64})"
 readonly container_id="$(printf 'c%.0s' {1..64})"
@@ -128,7 +132,7 @@ env "${remote_env[@]}" \
   DEPLOY_LEGACY_CONFIG_IMAGE="${config_image}" \
   DEPLOY_LEGACY_IMAGE_ID="${image_id}" \
   DEPLOY_LEGACY_IMAGE_REVISION="${revision}" \
-  DEPLOY_LEGACY_SOURCE_ROOT="${repository_root}" \
+  DEPLOY_LEGACY_SOURCE_ROOT="${source_root}" \
   bash "${contract_script}"
 
 printf 'different bytes\n' > "${runtime_target}"

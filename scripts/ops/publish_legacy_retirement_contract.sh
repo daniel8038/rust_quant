@@ -134,7 +134,7 @@ write_receipt() {
 publish_remote() {
   local source_revision="$1" config_image="$2" image_id="$3" image_revision="$4"
   local deploy_core_base64="$5" runtime_services_base64="$6"
-  local identity=() working_dir container_id deploy_dir handoff_root receipt staging_dir
+  local identity=() working_dir container_id deploy_dir handoff_root receipt staging_dir=""
   local deploy_target runtime_target deploy_temporary="" runtime_temporary=""
   local created_deploy_dir=0 created_deploy=0 created_runtime=0 created_receipt=0 completed=0
   local final_identity=()
@@ -147,25 +147,14 @@ publish_remote() {
   deploy_dir="${working_dir}/scripts/deploy"
   handoff_root="${working_dir}/.deploy/eth-4h-market-handoff"
   receipt="${handoff_root}/retirement-contract-receipt.env"
-  assert_regular_real_directory "${working_dir}/scripts" \
-    || { echo "legacy scripts target is not an exact regular realpath" >&2; return 1; }
-  if [[ -e "${deploy_dir}" || -L "${deploy_dir}" ]]; then
-    assert_regular_real_directory "${deploy_dir}" \
-      || { echo "legacy scripts/deploy target is not an exact regular realpath" >&2; return 1; }
-  else
-    mkdir "${deploy_dir}"
-    created_deploy_dir=1
-    assert_regular_real_directory "${deploy_dir}" \
-      || { echo "created legacy scripts/deploy target is not an exact regular realpath" >&2; return 1; }
-  fi
-
-  staging_dir="$(mktemp -d "${working_dir}/.legacy-retirement-contract.XXXXXX")"
   cleanup_publish() {
     local status="$?"
     [[ -z "${deploy_temporary}" ]] || rm -f "${deploy_temporary}"
     [[ -z "${runtime_temporary}" ]] || rm -f "${runtime_temporary}"
-    rm -f "${staging_dir}/deploy_core.sh" "${staging_dir}/runtime-services.txt"
-    rmdir "${staging_dir}" 2>/dev/null || true
+    if [[ -n "${staging_dir}" ]]; then
+      rm -f "${staging_dir}/deploy_core.sh" "${staging_dir}/runtime-services.txt"
+      rmdir "${staging_dir}" 2>/dev/null || true
+    fi
     if [[ "${completed}" != "1" && "${created_deploy}" == "1" ]]; then
       rm -f "${deploy_dir}/deploy_core.sh"
     fi
@@ -181,6 +170,20 @@ publish_remote() {
     return "${status}"
   }
   trap cleanup_publish EXIT
+
+  assert_regular_real_directory "${working_dir}/scripts" \
+    || { echo "legacy scripts target is not an exact regular realpath" >&2; return 1; }
+  if [[ -e "${deploy_dir}" || -L "${deploy_dir}" ]]; then
+    assert_regular_real_directory "${deploy_dir}" \
+      || { echo "legacy scripts/deploy target is not an exact regular realpath" >&2; return 1; }
+  else
+    mkdir "${deploy_dir}"
+    created_deploy_dir=1
+    assert_regular_real_directory "${deploy_dir}" \
+      || { echo "created legacy scripts/deploy target is not an exact regular realpath" >&2; return 1; }
+  fi
+
+  staging_dir="$(mktemp -d "${working_dir}/.legacy-retirement-contract.XXXXXX")"
 
   decode_file "${deploy_core_base64}" "${staging_dir}/deploy_core.sh"
   decode_file "${runtime_services_base64}" "${staging_dir}/runtime-services.txt"
