@@ -31,6 +31,36 @@ file_mode() {
   fi
 }
 
+file_mtime() {
+  local file="$1"
+  if stat -c '%Y' "${file}" >/dev/null 2>&1; then
+    stat -c '%Y' "${file}"
+  else
+    stat -f '%m' "${file}"
+  fi
+}
+
+file_sha256() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${file}" | awk '{print $1}'
+  else
+    shasum -a 256 "${file}" | awk '{print $1}'
+  fi
+}
+
+tree_snapshot() {
+  local file
+  while IFS= read -r file; do
+    printf '%s|%s|%s|%s|%s\n' \
+      "${file#"${working_dir}/"}" \
+      "$(file_mode "${file}")" \
+      "$(wc -c < "${file}" | tr -d ' ')" \
+      "$(file_mtime "${file}")" \
+      "$(file_sha256 "${file}")"
+  done < <(find "${working_dir}" -type f -print | LC_ALL=C sort)
+}
+
 working_dir="${test_root}/legacy"
 fake_bin="${test_root}/bin"
 mkdir -p "${working_dir}/.deploy/eth-4h-market-handoff" "${working_dir}/scripts" "${fake_bin}"
@@ -82,14 +112,14 @@ for required in \
   grep -Fq "${required}" "${workflow}"
 done
 
-before_missing_verify="$(find "${working_dir}" -type f -exec stat -f '%N %z %m' {} \; 2>/dev/null | sort || find "${working_dir}" -type f -printf '%p %s %T@\n' | sort)"
+before_missing_verify="$(tree_snapshot)"
 if env "${remote_env[@]}" bash "${contract_script}" __remote verify \
   "${revision}" "${config_image}" "${image_id}" "${revision}" \
   verify-exact-b983-retirement-contract > /dev/null 2>&1; then
   echo "verify accepted a missing scripts/deploy directory" >&2
   exit 1
 fi
-after_missing_verify="$(find "${working_dir}" -type f -exec stat -f '%N %z %m' {} \; 2>/dev/null | sort || find "${working_dir}" -type f -printf '%p %s %T@\n' | sort)"
+after_missing_verify="$(tree_snapshot)"
 [[ "${before_missing_verify}" == "${after_missing_verify}" ]]
 [[ ! -e "${working_dir}/scripts/deploy" ]]
 
@@ -111,18 +141,18 @@ grep -Fxq "legacy_image_revision=${revision}" "${receipt}"
 grep -Fxq "legacy_container_id=${container_id}" "${receipt}"
 grep -Fxq "working_dir=${working_dir}" "${receipt}"
 
-before_verify="$(find "${working_dir}" -type f -exec stat -f '%N %z %m' {} \; 2>/dev/null | sort || find "${working_dir}" -type f -printf '%p %s %T@\n' | sort)"
+before_verify="$(tree_snapshot)"
 env "${remote_env[@]}" bash "${contract_script}" __remote verify \
   "${revision}" "${config_image}" "${image_id}" "${revision}" \
   verify-exact-b983-retirement-contract
-after_verify="$(find "${working_dir}" -type f -exec stat -f '%N %z %m' {} \; 2>/dev/null | sort || find "${working_dir}" -type f -printf '%p %s %T@\n' | sort)"
+after_verify="$(tree_snapshot)"
 [[ "${before_verify}" == "${after_verify}" ]]
 
 before_publish="${after_verify}"
 env "${remote_env[@]}" bash "${contract_script}" __remote publish \
   "${revision}" "${config_image}" "${image_id}" "${revision}" \
   publish-exact-b983-retirement-contract "${deploy_core_base64}" "${runtime_services_base64}"
-after_publish="$(find "${working_dir}" -type f -exec stat -f '%N %z %m' {} \; 2>/dev/null | sort || find "${working_dir}" -type f -printf '%p %s %T@\n' | sort)"
+after_publish="$(tree_snapshot)"
 [[ "${before_publish}" == "${after_publish}" ]]
 
 cat > "${fake_bin}/ssh" <<'SSH'
